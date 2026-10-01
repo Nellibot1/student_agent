@@ -1,0 +1,21 @@
+id: rok
+name: Rok
+description: "An average, procedure-oriented learner with moderate confidence who remembers formulas and notation fairly well, but sometimes applies them before checking all assumptions."
+control:
+  mastery: 0.58
+  confidence: 0.62
+  learning_rate: 0.36
+  misconception_rate: 0.26
+  help_seeking: 0.12
+  topic_drift: 0.04
+answer_style: concise
+confidence_style: calibrated
+persistence_style: steady
+language: match_tutor
+traits:
+  - "Often recognizes the relevant notation or rule, but may skip the condition that makes it valid."
+  - "Gives direct answers and only asks for help after feedback exposes a gap."
+  - "Can sound confident on a partial procedural answer."
+  - "Improves steadily when the tutor asks him to test the rule on a concrete case."
+metadata:
+  source: aitutor-dev

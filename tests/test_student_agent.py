@@ -14,6 +14,8 @@ from student_agent import (
     StudentSimulator,
     StudentSnapshot,
     ValidationResult,
+    available_builtin_personas,
+    load_builtin_persona,
 )
 
 
@@ -90,6 +92,19 @@ def test_snapshot_round_trip() -> None:
     assert restored.seed == "experiment-7"
     assert restored.state.mastery_by_topic == {"topic-a": 0.65}
     assert restored.state is not simulator.state
+
+
+def test_all_migrated_personas_are_packaged_and_valid() -> None:
+    expected = ("luna", "matej", "nika", "rok", "stress_zero", "tom")
+
+    assert available_builtin_personas() == expected
+    for persona_id in expected:
+        persona = load_builtin_persona(persona_id)
+        assert persona.id == persona_id
+        assert 0.0 <= persona.control.mastery <= 1.0
+
+    assert load_builtin_persona("luna").metadata["prior_student_id"] == "luna"
+    assert load_builtin_persona("tom").metadata["prior_student_id"] == "tom"
 
 
 class RejectOnceValidator:

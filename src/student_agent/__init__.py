@@ -16,7 +16,13 @@ from .engine import (
     prepare_student_turn,
 )
 from .errors import InvalidStudentResponseError, StudentAgentError, StudentGenerationError
-from .personas import DEFAULT_PERSONA, StudentPersona, load_persona
+from .personas import (
+    DEFAULT_PERSONA,
+    StudentPersona,
+    available_builtin_personas,
+    load_builtin_persona,
+    load_persona,
+)
 from .policy import (
     Grade,
     PolicyDecision,
@@ -48,6 +54,8 @@ __all__ = [
     "StudentSnapshot",
     "StudentTextGenerator",
     "ValidationResult",
+    "available_builtin_personas",
+    "load_builtin_persona",
     "load_persona",
     "prepare_student_turn",
 ]

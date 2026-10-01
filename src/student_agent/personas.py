@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.resources import files
 from pathlib import Path
 from typing import Literal
 
@@ -84,7 +85,27 @@ DEFAULT_PERSONA = StudentPersona(
 
 def load_persona(path: str | Path) -> StudentPersona:
     """Load one persona YAML file."""
-    data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    return _parse_persona_yaml(Path(path).read_text(encoding="utf-8"), source=str(path))
+
+
+def available_builtin_personas() -> tuple[str, ...]:
+    """Return the IDs of personas distributed with the package."""
+    directory = files("student_agent").joinpath("builtin_personas")
+    return tuple(sorted(item.name.removesuffix(".yaml") for item in directory.iterdir() if item.name.endswith(".yaml")))
+
+
+def load_builtin_persona(persona_id: str) -> StudentPersona:
+    """Load a packaged persona by ID without relying on repository paths."""
+    available = available_builtin_personas()
+    if persona_id not in available:
+        choices = ", ".join(available)
+        raise ValueError(f"unknown built-in persona {persona_id!r}; choose one of: {choices}")
+    resource = files("student_agent").joinpath("builtin_personas", f"{persona_id}.yaml")
+    return _parse_persona_yaml(resource.read_text(encoding="utf-8"), source=f"built-in persona {persona_id!r}")
+
+
+def _parse_persona_yaml(text: str, *, source: str) -> StudentPersona:
+    data = yaml.safe_load(text)
     if not isinstance(data, dict):
-        raise TypeError(f"persona file {path} must contain a mapping")
+        raise TypeError(f"{source} must contain a YAML mapping")
     return StudentPersona.model_validate(data)

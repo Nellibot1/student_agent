@@ -25,7 +25,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-student_agent = ["*.md", "py.typed"]
+student_agent = ["*.md", "py.typed", "builtin_personas/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

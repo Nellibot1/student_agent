@@ -93,7 +93,22 @@ silently interpreted as incorrect.
 
 ## Personas
 
-Construct personas in code or load them from YAML:
+The package includes the six personas migrated from the original AI Tutor project:
+`luna`, `matej`, `nika`, `rok`, `stress_zero`, and `tom`.
+
+```python
+from student_agent import available_builtin_personas, load_builtin_persona
+
+print(available_builtin_personas())
+persona = load_builtin_persona("luna")
+student = StudentSimulator(MyModel(), persona=persona)
+```
+
+Their behavior controls, descriptions, styles, and traits are preserved. The old
+application-specific `prior_student_id` value is retained under `persona.metadata`
+where it existed, rather than remaining a required core field.
+
+You can also construct new personas in code or load them from any YAML path:
 
 ```python
 from student_agent import StudentControlProfile, StudentPersona
