@@ -6,11 +6,11 @@ the prompt. Keep it for experiments where state-prompting is intentional.
 
 from __future__ import annotations
 
+from ..perception import StudentObservation
 from ..personas import StudentPersona
 from ..policy import (
     PolicyDecision,
     SimulatedStudentState,
-    SimulationContext,
     SimulationMode,
 )
 from .base import PolicyBackedMode, fill_simulator_template
@@ -29,16 +29,19 @@ class StatePromptedStudentMode(PolicyBackedMode):
         self,
         prompt_template: str,
         persona: StudentPersona,
-        context: SimulationContext,
+        observation: StudentObservation,
         simulated_state: SimulatedStudentState,
         decision: PolicyDecision,
+        history_block: str,
     ) -> str:
         return fill_simulator_template(
             prompt_template,
             mode=self.mode,
             persona_block=persona.prompt_block(),
-            context_block=context.visible_prompt_block(),
+            observation_block=observation.visible_prompt_block(),
+            history_block=history_block,
+            tutor_message=observation.tutor_message,
             decision_block=decision.realization_hint(),
-            simulated_state_block=simulated_state.prompt_block(context.topic_id),
+            simulated_state_block=simulated_state.prompt_block(observation.topic_key),
             response_mode_reference=STATE_PROMPTED_RESPONSE_MODE_REFERENCE,
         )

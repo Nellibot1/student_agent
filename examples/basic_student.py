@@ -1,16 +1,10 @@
-"""Run a simulated learner without any application or model-provider dependency."""
+"""Run a simulated learner using only visible tutor messages."""
 
 from __future__ import annotations
 
 import asyncio
 
-from student_agent import (
-    Grade,
-    SimulationContext,
-    StudentControlProfile,
-    StudentPersona,
-    StudentSimulator,
-)
+from student_agent import StudentControlProfile, StudentPersona, StudentSimulator
 
 
 class DemoGenerator:
@@ -38,20 +32,11 @@ async def main() -> None:
     )
     student = StudentSimulator(DemoGenerator(), persona=persona, seed=42)
 
-    reply = await student.respond(
-        "Can you explain the reasoning in your own words?",
-        context=SimulationContext(
-            topic_id="example-topic",
-            task_type="explanation",
-            expects_answer=True,
-            turn_number=1,
-            previous_grade=Grade.UNGRADED,
-        ),
-    )
+    reply = await student.respond("Can you explain the reasoning in your own words?")
 
     print(f"Student: {reply.message}")
-    print(f"Intended behavior: {reply.decision.mode}")
-    print(f"State: {reply.state.model_dump()}")
+    print(f"Student perceived: {reply.observation.message_type}")
+    print(f"Private state: {reply.state.model_dump()}")
 
 
 if __name__ == "__main__":

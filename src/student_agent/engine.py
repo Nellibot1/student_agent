@@ -1,26 +1,22 @@
-"""Application-independent student simulation engine.
-
-The engine owns persona/state/policy orchestration and delegates text generation to an
-injected implementation. It deliberately has no dependency on a model provider,
-application framework, experiment runner, or persistence system.
-"""
+"""Black-box student engine driven only by visible conversation."""
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .conversation import ConversationMessage, ConversationRole, render_history
 from .errors import InvalidStudentResponseError, StudentGenerationError
 from .modes import get_simulator_mode
+from .perception import RuleBasedPerception, StudentObservation, StudentPerception
 from .personas import DEFAULT_PERSONA, StudentPersona
 from .policy import (
     PolicyDecision,
     SimulatedStudentState,
-    SimulationContext,
     SimulationMode,
     evolve_simulated_state,
     initial_simulated_state,
@@ -44,23 +40,23 @@ class ValidationResult:
 
 
 class StudentResponseValidator(Protocol):
-    """Optional boundary for checking whether generated text matches the policy."""
+    """Check output against the student's private policy intention."""
 
     async def validate(
         self,
         *,
         message: str,
         decision: PolicyDecision,
-        context: SimulationContext,
+        observation: StudentObservation,
     ) -> ValidationResult:
-        """Accept the message or provide guidance for one retry."""
+        """Accept the message or provide guidance for an internal retry."""
 
 
 @dataclass(frozen=True)
 class PreparedStudentTurn:
-    """Policy result and instruction prepared before calling a text model."""
+    """Private perception, policy result, and generated instruction for one turn."""
 
-    context: SimulationContext
+    observation: StudentObservation
     state: SimulatedStudentState
     decision: PolicyDecision
     instruction: str
@@ -68,23 +64,24 @@ class PreparedStudentTurn:
 
 @dataclass(frozen=True)
 class StudentReply:
-    """One generated student reply plus inspectable simulator telemetry."""
+    """One visible reply plus inspectable private student telemetry."""
 
     message: str
-    context: SimulationContext
+    observation: StudentObservation
     state: SimulatedStudentState
     decision: PolicyDecision
     generation_attempts: int = 1
 
 
 class StudentSnapshot(BaseModel):
-    """Portable, versioned state for saving and restoring one simulated learner."""
+    """Portable, versioned memory for one independent simulated learner."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: int = Field(1, ge=1)
+    schema_version: int = Field(2, ge=2)
     persona: StudentPersona
     state: SimulatedStudentState
+    history: list[ConversationMessage] = Field(default_factory=list)
     mode: SimulationMode
     seed: str = ""
 
@@ -107,26 +104,28 @@ def default_prompt_template() -> str:
 def prepare_student_turn(
     *,
     persona: StudentPersona,
-    context: SimulationContext,
+    observation: StudentObservation,
+    history: Sequence[ConversationMessage],
     mode: SimulationMode,
     state: SimulatedStudentState,
     prompt_template: str | None = None,
     repair_hint: str = "",
 ) -> PreparedStudentTurn:
-    """Prepare a turn from explicit inputs without accessing global services."""
+    """Prepare a turn from the student's own perception and private memory."""
     mode_handler = get_simulator_mode(mode)
-    decision = mode_handler.choose_decision(persona, context, state)
+    decision = mode_handler.choose_decision(persona, observation, state)
     if repair_hint:
         decision = decision.model_copy(update={"repair_hint": repair_hint})
     instruction = mode_handler.render_instruction(
         prompt_template if prompt_template is not None else default_prompt_template(),
         persona,
-        context,
+        observation,
         state,
         decision,
+        render_history(history),
     )
     return PreparedStudentTurn(
-        context=context,
+        observation=observation,
         state=state,
         decision=decision,
         instruction=instruction,
@@ -134,11 +133,7 @@ def prepare_student_turn(
 
 
 class StudentSimulator:
-    """Stateful, reusable simulated student.
-
-    Callers provide a text generator and feed visible tutor messages plus optional
-    neutral experiment context. The simulator maintains its own learner state.
-    """
+    """Stateful black-box learner that receives only visible tutor messages."""
 
     def __init__(
         self,
@@ -147,6 +142,8 @@ class StudentSimulator:
         persona: StudentPersona = DEFAULT_PERSONA,
         mode: SimulationMode = SimulationMode.HIDDEN_STATE_STUDENT,
         state: SimulatedStudentState | None = None,
+        history: Sequence[ConversationMessage] | None = None,
+        perception: StudentPerception | None = None,
         prompt_template: str | None = None,
         seed: str | int = "",
         validator: StudentResponseValidator | None = None,
@@ -158,16 +155,19 @@ class StudentSimulator:
         self.persona = persona
         self.mode = mode
         self.state = state.model_copy(deep=True) if state is not None else initial_simulated_state(persona)
+        self.history = [message.model_copy(deep=True) for message in (history or ())]
+        self.perception = perception or RuleBasedPerception()
         self.prompt_template = prompt_template
         self.seed = str(seed)
         self.validator = validator
         self.max_generation_attempts = max_generation_attempts
 
     def snapshot(self) -> StudentSnapshot:
-        """Return a serializable snapshot; model providers are intentionally excluded."""
+        """Return serializable private memory; runtime adapters are excluded."""
         return StudentSnapshot(
             persona=self.persona.model_copy(deep=True),
             state=self.state.model_copy(deep=True),
+            history=[message.model_copy(deep=True) for message in self.history],
             mode=self.mode,
             seed=self.seed,
         )
@@ -178,58 +178,58 @@ class StudentSimulator:
         snapshot: StudentSnapshot,
         *,
         generator: StudentTextGenerator,
+        perception: StudentPerception | None = None,
         prompt_template: str | None = None,
         validator: StudentResponseValidator | None = None,
         max_generation_attempts: int = 1,
     ) -> StudentSimulator:
-        """Restore a learner while injecting this application's model boundary."""
-        if snapshot.schema_version != 1:
+        """Restore a learner while injecting local runtime adapters."""
+        if snapshot.schema_version != 2:
             raise ValueError(f"unsupported snapshot schema version: {snapshot.schema_version}")
         return cls(
             generator,
             persona=snapshot.persona,
             mode=snapshot.mode,
             state=snapshot.state,
+            history=snapshot.history,
+            perception=perception,
             prompt_template=prompt_template,
             seed=snapshot.seed,
             validator=validator,
             max_generation_attempts=max_generation_attempts,
         )
 
-    def prepare(
-        self,
-        tutor_message: str,
-        *,
-        context: SimulationContext | None = None,
-        repair_hint: str = "",
-    ) -> PreparedStudentTurn:
-        """Advance hidden state and prepare one response instruction."""
-        base = context or SimulationContext()
-        turn_context = base.model_copy(
+    async def prepare(self, tutor_message: str, *, repair_hint: str = "") -> PreparedStudentTurn:
+        """Interpret visible text and prepare a turn without committing state."""
+        message = tutor_message.strip()
+        if not message:
+            raise ValueError("tutor_message cannot be empty")
+
+        observation = await self.perception.observe(
+            tutor_message=message,
+            history=tuple(self.history),
+            state=self.state.model_copy(deep=True),
+        )
+        observation = observation.model_copy(
             update={
-                "tutor_message": tutor_message,
-                "experiment_seed": self.seed or base.experiment_seed,
+                "tutor_message": message,
+                "experiment_seed": self.seed,
             }
         )
-        self.state = evolve_simulated_state(self.state, self.persona, turn_context)
+        next_state = evolve_simulated_state(self.state, self.persona, observation)
         return prepare_student_turn(
             persona=self.persona,
-            context=turn_context,
+            observation=observation,
+            history=tuple(self.history),
             mode=self.mode,
-            state=self.state,
+            state=next_state,
             prompt_template=self.prompt_template,
             repair_hint=repair_hint,
         )
 
-    async def respond(
-        self,
-        tutor_message: str,
-        *,
-        context: SimulationContext | None = None,
-        repair_hint: str = "",
-    ) -> StudentReply:
-        """Generate, optionally validate, and return one student response."""
-        prepared = self.prepare(tutor_message, context=context, repair_hint=repair_hint)
+    async def respond(self, tutor_message: str, *, repair_hint: str = "") -> StudentReply:
+        """Respond to visible text without receiving tutor-system metadata."""
+        prepared = await self.prepare(tutor_message, repair_hint=repair_hint)
         validation_reason = ""
 
         for attempt in range(1, self.max_generation_attempts + 1):
@@ -237,7 +237,7 @@ class StudentSimulator:
                 message = (
                     await self.generator.generate(
                         instruction=prepared.instruction,
-                        tutor_message=prepared.context.tutor_message,
+                        tutor_message=prepared.observation.tutor_message,
                     )
                 ).strip()
             except Exception as exc:
@@ -255,13 +255,23 @@ class StudentSimulator:
                 validation = await self.validator.validate(
                     message=message,
                     decision=prepared.decision,
-                    context=prepared.context,
+                    observation=prepared.observation,
                 )
 
             if validation.accepted:
+                self.state = prepared.state.model_copy(deep=True)
+                self.history.extend(
+                    [
+                        ConversationMessage(
+                            role=ConversationRole.TUTOR,
+                            content=prepared.observation.tutor_message,
+                        ),
+                        ConversationMessage(role=ConversationRole.STUDENT, content=message),
+                    ]
+                )
                 return StudentReply(
                     message=message,
-                    context=prepared.context,
+                    observation=prepared.observation,
                     state=prepared.state,
                     decision=prepared.decision,
                     generation_attempts=attempt,
@@ -271,13 +281,12 @@ class StudentSimulator:
             if attempt < self.max_generation_attempts:
                 prepared = prepare_student_turn(
                     persona=self.persona,
-                    context=prepared.context,
+                    observation=prepared.observation,
+                    history=tuple(self.history),
                     mode=self.mode,
-                    state=self.state,
+                    state=prepared.state,
                     prompt_template=self.prompt_template,
                     repair_hint=validation.repair_hint or validation.reason,
                 )
 
-        raise InvalidStudentResponseError(
-            validation_reason or "generated student response did not pass validation"
-        )
+        raise InvalidStudentResponseError(validation_reason or "generated student response did not pass validation")

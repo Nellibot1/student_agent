@@ -9,11 +9,11 @@ look like it read the experiment config.
 
 from __future__ import annotations
 
+from ..perception import StudentObservation
 from ..personas import StudentPersona
 from ..policy import (
     PolicyDecision,
     SimulatedStudentState,
-    SimulationContext,
     SimulationMode,
 )
 from .base import PolicyBackedMode
@@ -25,6 +25,10 @@ You are the STUDENT, not the tutor, not an evaluator, and not an assistant expla
 <student_profile>
 {{style}}
 </student_profile>
+
+<visible_conversation_history>
+{{conversation_history}}
+</visible_conversation_history>
 
 <latest_tutor_message>
 {{tutor_message}}
@@ -56,14 +60,16 @@ class HiddenStateStudentMode(PolicyBackedMode):
         self,
         prompt_template: str,
         persona: StudentPersona,
-        context: SimulationContext,
+        observation: StudentObservation,
         simulated_state: SimulatedStudentState,
         decision: PolicyDecision,
+        history_block: str,
     ) -> str:
         del prompt_template, simulated_state
         return (
             HIDDEN_STATE_PROMPT_TEMPLATE.replace("{{style}}", _style_block(persona))
-            .replace("{{tutor_message}}", context.tutor_message or "Please continue.")
+            .replace("{{conversation_history}}", history_block)
+            .replace("{{tutor_message}}", observation.tutor_message)
             .replace("{{decision}}", decision.realization_hint())
         )
 

@@ -1,22 +1,29 @@
 # student_agent
 
-`student_agent` is a provider- and application-independent simulated learner engine.
-It separates deterministic learner behavior from natural-language generation:
+`student_agent` is a reusable simulated learner that is independent of the AI Tutor
+repository. Its public turn API receives only what a real student could see:
 
-1. Python updates learner state and selects an intended response behavior.
-2. An application-supplied text generator realizes that behavior as one learner message.
-3. The caller receives the message together with the decision and updated state.
+```python
+reply = await student.respond("That is almost correct. Can you try again?")
+```
 
-The package does not depend on Google ADK, an AI Tutor application, a web framework,
-a database, or a particular model provider.
+There is no tutor-owned `topic_id`, task type, expected-answer flag, grade, lesson plan,
+database object, or application session passed into `respond`. The student keeps its own
+visible conversation history and forms a fallible interpretation of the tutor's words.
 
-## Install
+The package does not import Google ADK, the AI Tutor application, a web framework, a
+database, OpenAI, Anthropic, or another model SDK. It uses two normal installable runtime
+libraries: Pydantic for validated data models and PyYAML for persona files. “Standalone”
+means the package can be installed and used outside the original repository; it does not
+mean that all code must be Python-standard-library-only.
+
+## Install and run
 
 ```bash
 pip install student-agent
 ```
 
-For development:
+For local development:
 
 ```bash
 python -m venv .venv
@@ -25,75 +32,108 @@ pip install -e ".[dev]"
 pytest
 ```
 
-## Minimal example
+Minimal example:
 
 ```python
 import asyncio
 
-from student_agent import SimulationContext, StudentSimulator
+from student_agent import StudentSimulator, load_builtin_persona
 
 
 class MyModel:
     async def generate(self, *, instruction: str, tutor_message: str) -> str:
-        # Replace this body with a call to any LLM provider or local model.
+        # Send `instruction` to any hosted or local language model.
         return "I think I understand the first part, but why does the last step follow?"
 
 
 async def main() -> None:
-    student = StudentSimulator(MyModel(), seed=42)
-    reply = await student.respond(
-        "Can you explain what this result means?",
-        context=SimulationContext(
-            topic_id="example-topic",
-            task_type="explanation",
-            expects_answer=True,
-            turn_number=1,
-        ),
+    student = StudentSimulator(
+        MyModel(),
+        persona=load_builtin_persona("luna"),
+        seed=42,
     )
+
+    reply = await student.respond("Can you explain what this result means?")
     print(reply.message)
-    print(reply.decision.mode)
 
 
 asyncio.run(main())
 ```
 
-The generator boundary is intentionally small:
+The model boundary is intentionally small:
 
 ```python
 class StudentTextGenerator(Protocol):
-    async def generate(self, *, instruction: str, tutor_message: str) -> str:
-        ...
+    async def generate(self, *, instruction: str, tutor_message: str) -> str: ...
 ```
 
-Provider-specific clients belong in the consuming application. This keeps the core
-portable and prevents model SDKs from becoming mandatory dependencies.
+The consuming application supplies that adapter, so the package works with an API model,
+a local model, or a test double without taking a dependency on any provider SDK.
 
-## Context supplied by an application
+## How one turn works
 
-`SimulationContext` is the normalized boundary between an application and the learner:
+For every call to `respond(tutor_message)`, the simulator performs five steps:
+
+1. **Perception:** `RuleBasedPerception` reads the visible tutor message, the student's
+   visible history, and the student's private memory. It guesses the topic, whether the
+   message looks like a question, explanation, hint, instruction, or feedback, whether a
+   reply is expected, and whether visible wording sounds correct/partial/incorrect.
+2. **Private state update:** the inferred feedback changes the student's own mastery,
+   confidence, confusion, misconceptions, attempts, fatigue, and motivation. No external
+   grade is consulted.
+3. **Policy decision:** the persona, private state, interpretation, and stable seed choose
+   a response tendency such as correct, partial, misconception-shaped, clarification, or
+   topic drift.
+4. **Language generation:** the package builds an instruction containing only information
+   owned by the student simulator. The injected text generator produces one natural reply.
+5. **Commit:** after a non-empty reply passes optional validation, the new private state
+   and the tutor/student messages are committed to the learner's memory. A failed turn does
+   not mutate the session.
+
+The default topic is not a curriculum ID. On the first message, the perception component
+extracts a few meaningful words and hashes that local label into a stable private
+`topic_key`. Later turns normally remain on that topic until visible transition language
+such as “new topic” or “moving on to” appears. This is deliberately imperfect, just as a
+student may misunderstand what topic a tutor is testing.
+
+Likewise, `message_type` is inferred from surface wording. A question mark or phrases such
+as “can you” and “explain” suggest a question. “Almost” or “not quite” suggests partial
+feedback. “Correct” or “well done” suggests positive feedback. These are heuristics, not
+hidden truth from the tutoring system.
+
+For stronger semantic interpretation, inject another implementation of
+`StudentPerception`. It may use a small local classifier or an LLM, but it must receive only
+the same student-visible inputs:
 
 ```python
-from student_agent import Grade, SimulationContext
-
-context = SimulationContext(
-    topic_id="fractions",
-    topic_label="Adding fractions",
-    task_type="worked_example",
-    learning_objective="Use a common denominator",
-    expects_answer=True,
-    attempt_number=2,
-    turn_number=4,
-    previous_grade=Grade.PARTIAL,
-)
+class StudentPerception(Protocol):
+    async def observe(
+        self,
+        *,
+        tutor_message: str,
+        history: Sequence[ConversationMessage],
+        state: SimulatedStudentState,
+    ) -> StudentObservation: ...
 ```
 
-Each application is responsible for mapping its own session, exercise, and grading
-objects into this neutral type. Unknown grade strings are rejected instead of being
-silently interpreted as incorrect.
+This extension improves interpretation without coupling the student to a tutor database
+or experiment runner.
+
+## What validation means
+
+Validation is optional and internal to the student. A `StudentResponseValidator` checks
+whether generated text follows the already selected response tendency—for example, whether
+a requested partial answer accidentally became fully correct. If rejected, it may return a
+repair hint and the simulator generates again. It does **not** grade the student against a
+tutor answer key, discover the real topic, or send data back to the tutor.
+
+An external research evaluator may still grade transcripts after the fact. Keep that
+evaluator outside `StudentSimulator`; do not feed its private labels into `respond` if the
+goal is a black-box student.
 
 ## Personas
 
-The package includes the six personas migrated from the original AI Tutor project:
+The six personas migrated from the earlier AI Tutor implementation are included:
 `luna`, `matej`, `nika`, `rok`, `stress_zero`, and `tom`.
 
 ```python
@@ -101,14 +141,13 @@ from student_agent import available_builtin_personas, load_builtin_persona
 
 print(available_builtin_personas())
 persona = load_builtin_persona("luna")
-student = StudentSimulator(MyModel(), persona=persona)
 ```
 
 Their behavior controls, descriptions, styles, and traits are preserved. The old
-application-specific `prior_student_id` value is retained under `persona.metadata`
-where it existed, rather than remaining a required core field.
+application-specific `prior_student_id` is retained as optional metadata where it existed,
+not as a dependency on the prior repository.
 
-You can also construct new personas in code or load them from any YAML path:
+You can construct a new profile or load a YAML file from any path:
 
 ```python
 from student_agent import StudentControlProfile, StudentPersona
@@ -129,53 +168,33 @@ persona = StudentPersona(
 )
 ```
 
-## Save and restore a learner
+## Save and restore
 
-Model clients are deliberately not serialized. Save a portable snapshot and inject the
-appropriate generator when restoring it:
+Snapshots contain the persona, private state, seed, mode, and visible conversation history.
+Model clients and perception adapters are runtime dependencies and are injected again:
 
 ```python
 from student_agent import StudentSimulator, StudentSnapshot
 
 payload = student.snapshot().model_dump_json()
-
 snapshot = StudentSnapshot.model_validate_json(payload)
 restored = StudentSimulator.from_snapshot(snapshot, generator=MyModel())
 ```
 
-The application decides whether to store the JSON in a file, database, cache, or
-experiment record.
+Snapshot schema 2 belongs to version 0.2 and is intentionally incompatible with the old
+metadata-driven schema 1.
 
-## Optional validation and retry
+## Boundaries and limitations
 
-Applications can inject a `StudentResponseValidator`. If a generated message does not
-match the selected policy behavior, the validator can reject it and provide a repair
-hint. Set `max_generation_attempts` above one to enable retries. Validation is optional
-because it may require an additional model call.
+The package owns personas, student-visible history, private state evolution, perception,
+policy selection, prompt rendering, snapshots, and optional response-policy validation.
 
-## Concurrency
+The consuming application still owns the actual model adapter, persistence, concurrency,
+timeouts, rate limits, and network retries. One `StudentSimulator` is one stateful learner
+session; do not call the same instance concurrently.
 
-`StudentSimulator` is a stateful session object. Create one instance per learner and do
-not call the same instance concurrently. Web applications should load a learner
-snapshot, process one turn, and save the returned snapshot under an application-level
-lock or transaction.
-
-## Package boundaries
-
-The core package owns:
-
-- personas and normalized controls;
-- learner state evolution;
-- deterministic response-mode selection;
-- prompt rendering;
-- portable snapshots;
-- optional response validation hooks.
-
-Consuming applications own:
-
-- the model-provider adapter;
-- grading and mapping to `Grade`;
-- conversation-history storage;
-- persistence and concurrency control;
-- framework-specific integrations;
-- timeout, rate-limit, and network retry behavior.
+Because the default perception uses lightweight rules, subtle or indirect feedback can be
+misclassified, topic changes can be missed, and different topics with similar wording can
+be grouped together. Those mistakes preserve isolation but reduce simulation accuracy. Use
+a custom text-only perception adapter when semantic accuracy matters more than a zero-model
+default.

@@ -12,9 +12,19 @@ Never mention simulation, personas, policies, response modes, grading labels, hi
 {{persona}}
 </persona>
 
-<tutor_context>
-{{context}}
-</tutor_context>
+<visible_conversation_history>
+{{conversation_history}}
+</visible_conversation_history>
+
+<latest_tutor_message>
+{{tutor_message}}
+</latest_tutor_message>
+
+<student_interpretation>
+This is the learner's own fallible interpretation of the visible conversation, not
+authoritative information from the tutor system.
+{{observation}}
+</student_interpretation>
 
 <simulated_student_state>
 Internal to the simulated learner. Treat this as your own background tendency, not as tutor-visible information.
@@ -26,7 +36,9 @@ Internal to the simulated learner. Treat this as your own background tendency, n
 </reply_guidance>
 
 <core_task>
-Use the persona, tutor context, simulated student state, and reply guidance to produce the next realistic student reply. The persona controls the style, confidence, persistence, and learning behavior.
+Use the visible conversation, the learner's interpretation, simulated student state,
+and reply guidance to produce the next realistic student reply. The learner must not
+act as if it can access tutor plans, grading databases, or hidden curriculum metadata.
 </core_task>
 
 <realism>

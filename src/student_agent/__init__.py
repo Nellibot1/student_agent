@@ -4,6 +4,7 @@ Framework- and model-provider-specific adapters live outside this package.
 """
 
 from .controls import StudentControlProfile, StudentPolicyScalars
+from .conversation import ConversationMessage, ConversationRole
 from .engine import (
     CallableTextGenerator,
     PreparedStudentTurn,
@@ -16,6 +17,13 @@ from .engine import (
     prepare_student_turn,
 )
 from .errors import InvalidStudentResponseError, StudentAgentError, StudentGenerationError
+from .perception import (
+    MessageType,
+    PerceivedFeedback,
+    RuleBasedPerception,
+    StudentObservation,
+    StudentPerception,
+)
 from .personas import (
     DEFAULT_PERSONA,
     StudentPersona,
@@ -24,10 +32,8 @@ from .personas import (
     load_persona,
 )
 from .policy import (
-    Grade,
     PolicyDecision,
     SimulatedStudentState,
-    SimulationContext,
     SimulationMode,
     StudentResponseMode,
 )
@@ -35,16 +41,21 @@ from .policy import (
 __all__ = [
     "DEFAULT_PERSONA",
     "CallableTextGenerator",
-    "Grade",
+    "ConversationMessage",
+    "ConversationRole",
     "InvalidStudentResponseError",
+    "MessageType",
+    "PerceivedFeedback",
     "PolicyDecision",
     "PreparedStudentTurn",
+    "RuleBasedPerception",
     "SimulatedStudentState",
-    "SimulationContext",
     "SimulationMode",
     "StudentAgentError",
     "StudentControlProfile",
     "StudentGenerationError",
+    "StudentObservation",
+    "StudentPerception",
     "StudentPersona",
     "StudentPolicyScalars",
     "StudentReply",
