@@ -204,6 +204,15 @@ student-agent chat --resume data/conversations/algebra.json
 
 # Show every CLI option
 student-agent chat --help
+
+# generate persona via prompt
+student-agent generate-persona \
+  "This student is interested and eager to learn, but cautious when answering." \
+  --id interested_cautious \
+  --name "Interested, cautious learner" \
+  --output personas/interested_cautious.yaml
+
+student-agent chat --persona personas/interested_cautious.yaml
 ```
 
 ## Minimal Python API example
