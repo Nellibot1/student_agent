@@ -23,6 +23,7 @@ from .litellm import (
     GenerationUsage,
     _completion_text,
     _load_completion,
+    _raise_non_retryable_provider_error,
     _usage_from_response,
 )
 
@@ -205,6 +206,7 @@ class LiteLLMPersonaGenerator:
                     metadata=metadata,
                 )
             except Exception as exc:  # noqa: BLE001 - provider and schema failures share retry handling
+                _raise_non_retryable_provider_error(exc, operation="persona generation")
                 last_exception = exc
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 if attempt == self.max_attempts:

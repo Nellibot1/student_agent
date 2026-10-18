@@ -15,6 +15,7 @@ import sys
 
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -63,14 +64,115 @@ WriteLine = Callable[[str], None]
 # ordinary model names such as openai/gpt-4.1-mini work without extra configuration.
 DEFAULT_REASONING_EFFORT = ""
 REASONING_EFFORT_CHOICES = ("none", "low", "medium", "high", "xhigh", "max")
+API_KEY_PLACEHOLDER_MARKERS = (
+    "replace-with",
+    "replace_me",
+    "replace-me",
+    "your-",
+    "your-api-key",
+    "your-real-key",
+    "your-openai-api-key",
+    "placeholder",
+)
+
+
+def local_environment_path() -> Path | None:
+    """Return the nearest .env file that the CLI would load, if one exists."""
+    env_file = find_dotenv(usecwd=True)
+    return Path(env_file).resolve() if env_file else None
 
 
 def load_local_environment() -> bool:
     """Load the nearest .env from the working directory without replacing exported values."""
     # Start at the user's working directory rather than the installed package directory.
     # Exported environment variables win over values in the file (``override=False``).
-    env_file = find_dotenv(usecwd=True)
-    return bool(env_file) and load_dotenv(env_file, override=False)
+    env_file = local_environment_path()
+    return env_file is not None and load_dotenv(env_file, override=False)
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    normalized = value.strip().strip("\"'").lower()
+    return any(marker in normalized for marker in API_KEY_PLACEHOLDER_MARKERS)
+
+
+def _openai_key_error(model: str) -> str:
+    """Return actionable OpenAI credential guidance without exposing the key."""
+    if not model.strip().lower().startswith("openai/"):
+        return ""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    destination = local_environment_path() or (Path.cwd() / ".env").resolve()
+    if not key:
+        return f"OPENAI_API_KEY is missing. Add a valid API key to {destination}."
+    if _looks_like_placeholder(key):
+        return f"OPENAI_API_KEY still contains an example value. Replace it in {destination}."
+    return ""
+
+
+def validate_model_configuration(model: str) -> None:
+    """Fail before interactive input when the selected provider cannot be used."""
+    if find_spec("litellm") is None:
+        raise RuntimeError(
+            "LiteLLM support is not installed. Run `python -m pip install -e \".[litellm]\"`."
+        )
+    credential_error = _openai_key_error(model)
+    if credential_error:
+        raise ValueError(credential_error)
+
+
+def doctor_report(model: str) -> tuple[list[str], bool]:
+    """Build a secret-safe first-run diagnostic report."""
+    lines: list[str] = []
+    ready = True
+
+    python_ok = sys.version_info >= (3, 11)
+    lines.append(
+        f"[{'OK' if python_ok else 'ERROR'}] Python "
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} (requires 3.11+)"
+    )
+    ready &= python_ok
+
+    cwd = Path.cwd().resolve()
+    if (cwd / "pyproject.toml").is_file():
+        lines.append(f"[OK] Working directory: {cwd}")
+    else:
+        lines.append(f"[WARN] Working directory has no pyproject.toml: {cwd}")
+
+    env_path = local_environment_path()
+    if env_path is None:
+        lines.append("[WARN] No .env file found; exported environment variables will be used")
+    else:
+        lines.append(f"[OK] Environment file: {env_path}")
+
+    litellm_ok = find_spec("litellm") is not None
+    lines.append(f"[{'OK' if litellm_ok else 'ERROR'}] LiteLLM {'installed' if litellm_ok else 'not installed'}")
+    ready &= litellm_ok
+
+    selected_model = model.strip()
+    if selected_model:
+        lines.append(f"[OK] Model: {selected_model}")
+    else:
+        lines.append("[ERROR] No model configured; set STUDENT_AGENT_MODEL in .env")
+        ready = False
+
+    credential_error = _openai_key_error(selected_model)
+    if credential_error:
+        lines.append(f"[ERROR] {credential_error}")
+        ready = False
+    elif selected_model.lower().startswith("openai/"):
+        lines.append("[OK] OPENAI_API_KEY is configured")
+    elif selected_model:
+        lines.append("[OK] Provider credentials are delegated to LiteLLM")
+
+    try:
+        load_builtin_persona("luna")
+    except (OSError, ValueError) as exc:
+        lines.append(f"[ERROR] Built-in persona 'luna' could not be loaded: {exc}")
+        ready = False
+    else:
+        lines.append("[OK] Built-in persona: luna")
+
+    lines.append("Ready to run student-agent." if ready else "Setup is incomplete; fix the ERROR items above.")
+    return lines, ready
 
 
 def select_persona(value: str, persona_json: str) -> StudentPersona:
@@ -302,6 +404,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="student-agent", description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    doctor = subparsers.add_parser("doctor", help="Check a first-run installation without exposing secrets")
+    doctor.add_argument(
+        "--model",
+        default=os.environ.get("STUDENT_AGENT_MODEL", ""),
+        help="LiteLLM model name; defaults to STUDENT_AGENT_MODEL",
+    )
+
     chat = subparsers.add_parser("chat", help="Chat with one simulated student")
     persona_group = chat.add_mutually_exclusive_group()
     persona_group.add_argument(
@@ -429,6 +538,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     # Handle commands with their own arguments first. If neither branch matches, the
     # parser's required subcommand guarantees that the remaining command is ``chat``.
+    if args.command == "doctor":
+        lines, ready = doctor_report(args.model)
+        print("\n".join(lines))
+        return 0 if ready else 1
     if args.command == "personas":
         print("\n".join(available_builtin_personas()))
         return 0
@@ -438,6 +551,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.max_tokens < 1 or args.timeout <= 0 or args.attempts < 1:
             parser.error("persona generation token, timeout, and attempt values must be positive")
         try:
+            validate_model_configuration(args.model)
             destination, persona = asyncio.run(run_persona_generation(args))
         except (OSError, RuntimeError, StudentAgentError, ValueError) as exc:
             print(f"student-agent: error: {exc}", file=sys.stderr)
@@ -451,6 +565,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.max_tokens < 1 or args.timeout <= 0 or args.attempts < 1:
             parser.error("evaluation token, timeout, and attempt values must be positive")
         try:
+            validate_model_configuration(args.model)
             destination = asyncio.run(run_perception_evaluation(args))
         except (OSError, RuntimeError, StudentAgentError, ValueError) as exc:
             print(f"student-agent: error: {exc}", file=sys.stderr)
@@ -480,6 +595,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--once requires --message")
 
     try:
+        if args.model:
+            validate_model_configuration(args.model)
         asyncio.run(run_chat(args))
     except (OSError, RuntimeError, StudentAgentError, ValueError) as exc:
         print(f"student-agent: error: {exc}", file=sys.stderr)

@@ -33,12 +33,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..conversation import ConversationMessage, ConversationRole, render_history
 from ..engine import ValidationResult
-from ..errors import StudentPerceptionError, StudentValidationError
+from ..errors import StudentPerceptionError, StudentProviderError, StudentValidationError
 from ..perception import MessageType, PerceivedFeedback, StudentObservation
 from ..policy import PolicyDecision, SimulatedStudentState, StudentResponseMode
 
 CompletionCallable = Callable[..., Awaitable[Any]]
 DEFAULT_STUDENT_GENERATION_MAX_TOKENS = 1000
+NON_RETRYABLE_PROVIDER_ERROR_NAMES = frozenset(
+    {
+        "AuthenticationError",
+        "BadRequestError",
+        "NotFoundError",
+        "PermissionDeniedError",
+        "UnsupportedParamsError",
+    }
+)
 
 
 SEMANTIC_PERCEPTION_INSTRUCTION = """You interpret one visible tutor message from the learner's point of view.
@@ -352,6 +361,7 @@ class LiteLLMStudentPerception:
                 self.last_error = ""
                 return observation
             except Exception as exc:  # noqa: BLE001 - provider and schema failures share retry handling
+                _raise_non_retryable_provider_error(exc, operation="semantic perception")
                 last_exception = exc
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 if attempt == self.max_attempts:
@@ -490,6 +500,7 @@ class LiteLLMStudentResponseValidator:
                     observed_mode=parsed.observed_mode,
                 )
             except Exception as exc:  # noqa: BLE001 - provider and schema failures share retry handling
+                _raise_non_retryable_provider_error(exc, operation="semantic response validation")
                 last_exception = exc
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 if attempt < self.max_attempts:
@@ -595,6 +606,25 @@ def _load_completion() -> CompletionCallable:
             "LiteLLM support is not installed. Install it with `pip install 'student-agent[litellm]'`."
         ) from exc
     return acompletion
+
+
+def _raise_non_retryable_provider_error(exc: Exception, *, operation: str) -> None:
+    """Stop immediately when retrying cannot repair provider configuration.
+
+    LiteLLM errors are optional runtime types, so this check uses class names across the
+    exception chain rather than importing LiteLLM into the provider-neutral package core.
+    Schema errors, timeouts, rate limits, and connection failures remain retryable.
+    """
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        class_names = {item.__name__ for item in type(current).mro()}
+        if class_names & NON_RETRYABLE_PROVIDER_ERROR_NAMES:
+            raise StudentProviderError(
+                f"{operation} failed ({type(current).__name__}): {current}"
+            ) from exc
+        current = current.__cause__ or current.__context__
 
 
 def _completion_text(response: Any) -> str:

@@ -29,6 +29,7 @@ from .errors import (
     StudentAgentError,
     StudentGenerationError,
     StudentPerceptionError,
+    StudentProviderError,
     StudentValidationError,
 )
 from .evaluation import (
@@ -93,6 +94,7 @@ __all__ = [
     "StudentPerceptionError",
     "StudentPersona",
     "StudentPolicyScalars",
+    "StudentProviderError",
     "StudentReply",
     "StudentResponseMode",
     "StudentResponseValidator",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -11,10 +12,18 @@ from student_agent import (
     MisconceptionState,
     PolicyDecision,
     StudentPerceptionError,
+    StudentProviderError,
     StudentResponseMode,
     ValidationResult,
 )
-from student_agent.cli import build_parser, load_local_environment, run_chat, select_persona
+from student_agent.cli import (
+    build_parser,
+    doctor_report,
+    load_local_environment,
+    run_chat,
+    select_persona,
+    validate_model_configuration,
+)
 from student_agent.integrations import (
     LiteLLMStudentGenerator,
     LiteLLMStudentPerception,
@@ -106,6 +115,13 @@ def test_cli_parser_supports_chat_and_persona_listing() -> None:
     assert personas.command == "personas"
 
 
+def test_cli_parser_supports_first_run_doctor() -> None:
+    args = build_parser().parse_args(["doctor", "--model", "openai/gpt-4.1-mini"])
+
+    assert args.command == "doctor"
+    assert args.model == "openai/gpt-4.1-mini"
+
+
 def test_cli_reasoning_effort_can_be_overridden(monkeypatch) -> None:
     monkeypatch.setenv("STUDENT_AGENT_REASONING_EFFORT", "medium")
     parser = build_parser()
@@ -160,6 +176,37 @@ def test_local_env_supplies_default_model_without_overwriting_exported_value(mon
 
     assert args.model == "openai/exported-value"
     assert __import__("os").environ["OPENAI_API_KEY"] == "test-key-from-file"
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["", "replace-with-your-openai-api-key", "your-real-key", "your-actual-api-key"],
+)
+def test_openai_preflight_rejects_missing_or_placeholder_key(monkeypatch, tmp_path, key) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("student_agent.cli.find_spec", lambda package: object())
+    monkeypatch.setenv("OPENAI_API_KEY", key)
+
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+        validate_model_configuration("openai/gpt-4.1-mini")
+
+
+def test_doctor_never_prints_api_key(monkeypatch) -> None:
+    secret = "sk-test-secret-that-must-not-be-printed"
+    monkeypatch.setenv("OPENAI_API_KEY", secret)
+
+    lines, ready = doctor_report("openai/gpt-4.1-mini")
+
+    assert ready is True
+    assert secret not in "\n".join(lines)
+    assert "OPENAI_API_KEY is configured" in "\n".join(lines)
+
+
+def test_example_environment_file_contains_no_api_key() -> None:
+    example = Path(__file__).parents[1] / ".env.example"
+    key_line = next(line for line in example.read_text(encoding="utf-8").splitlines() if line.startswith("OPENAI_API_KEY="))
+
+    assert key_line == "OPENAI_API_KEY="
 
 
 def test_inline_persona_can_be_created_on_the_spot() -> None:
@@ -275,6 +322,7 @@ async def test_litellm_adapter_extracts_text_and_usage_without_real_dependency()
 
     assert answer == "My answer."
     assert requests[0]["messages"] == [{"role": "user", "content": "Act as the student."}]
+    assert "reasoning_effort" not in requests[0]
     assert generator.usage[0].model == "test/model"
     assert generator.usage[0].total_tokens == 13
 
@@ -340,6 +388,30 @@ async def test_semantic_perception_failure_is_not_replaced_with_rules() -> None:
         )
 
     assert "TimeoutError" in perception.last_error
+
+
+@pytest.mark.asyncio
+async def test_authentication_failure_is_not_retried() -> None:
+    calls = 0
+
+    class AuthenticationError(Exception):
+        pass
+
+    async def completion(**request):
+        nonlocal calls
+        del request
+        calls += 1
+        raise AuthenticationError("invalid provider credential")
+
+    perception = LiteLLMStudentPerception("openai/gpt-4.1-mini", completion=completion)
+    with pytest.raises(StudentProviderError, match="AuthenticationError"):
+        await perception.observe(
+            tutor_message="What is 1 + 1?",
+            history=(),
+            state=SimulatedStudentState(),
+        )
+
+    assert calls == 1
 
 
 @pytest.mark.asyncio

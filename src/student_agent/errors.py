@@ -10,6 +10,10 @@ class StudentAgentError(Exception):
     """Base class for package-specific runtime errors."""
 
 
+class StudentProviderError(StudentAgentError):
+    """Raised for provider configuration errors that should not be retried."""
+
+
 class StudentGenerationError(StudentAgentError):
     """Raised when the injected text generator fails."""
 
