@@ -1,7 +1,6 @@
 # student_agent
 
-`student_agent` is a reusable simulated learner that is independent of the AI Tutor
-repository. Its public turn API receives only what a real student could see:
+`student_agent` is a reusable independent simulated learner. Its public turn API receives only what a real student could see:
 
 ```python
 reply = await student.respond("That is almost correct. Can you try again?")
