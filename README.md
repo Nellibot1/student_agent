@@ -129,22 +129,6 @@ Student: 2.
 Inside the chat, use `/state` to inspect private learner state and `/quit` to stop. Saved
 conversations are written to `data/conversations/` by default.
 
-## Model and persona are different settings
-
-- `STUDENT_AGENT_MODEL=openai/gpt-4.1-mini` selects the model that produces text.
-- `--persona luna` selects the simulated learner's behavior.
-
-List the packaged personas with:
-
-```bash
-student-agent personas
-```
-
-Because the model is stored in `.env`, the shortest command uses the default persona:
-
-```bash
-student-agent chat
-```
 
 ## One-message smoke test
 
@@ -160,27 +144,6 @@ student-agent chat \
 
 Unlike the offline example, this command makes provider calls and may incur API usage.
 
-## PyCharm and VS Code
-
-Open the same cloned repository in the IDE that you use in the terminal.
-
-Use these settings:
-
-- Project folder: the directory containing this `README.md` and `pyproject.toml`.
-- Interpreter: `<repository>/.venv/bin/python` on macOS/Linux or
-  `<repository>\.venv\Scripts\python.exe` on Windows.
-- Working directory: the repository root.
-
-Verify the terminal location and command before debugging anything else:
-
-```bash
-pwd
-which student-agent        # macOS/Linux
-where.exe student-agent    # Windows
-```
-
-Both paths should belong to the same checkout. If two `student_agent` folders exist, keep
-one Git-connected copy and remove or archive the duplicate after preserving any changes.
 
 ## Troubleshooting
 
@@ -286,7 +249,6 @@ The tests use injected model fakes and should not contact a provider.
 ## Further documentation
 
 - [Architecture and turn lifecycle](docs/architecture.md)
-- [Embedding and extending the simulator](docs/integration.md)
 - [Personas, persistence, and perception evaluation](docs/experiments.md)
 
 The core package remains provider-neutral. LiteLLM is an optional convenience integration;
