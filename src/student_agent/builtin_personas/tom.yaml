@@ -5,18 +5,18 @@ control:
   mastery: 0.04
   confidence: 0.08
   learning_rate: 0.03
+  motivation: 0.36
   misconception_rate: 0.88
   help_seeking: 0.72
   topic_drift: 0.01
 answer_style: hesitant
 confidence_style: low
 persistence_style: fragile
+learning_dynamics:
+  purpose: tutor_stress_test
+  misconception_resistance: 0.92
+  corrections_before_adaptation: 8
 language: match_tutor
-traits:
-  - "Needs concrete numbers, pictures, and step-by-step scaffolding before attempting a definition."
-  - "Often asks for clarification even after a hint, especially when notation changes."
-  - "Repeats the same misconception after one correction and needs several checks before it weakens."
-  - "Frequently gives intuition-first answers that miss quantifiers, domains, or conditions."
 metadata:
   source: aitutor-dev
   prior_student_id: tom

@@ -5,6 +5,7 @@ control:
   mastery: 0.52
   confidence: 0.46
   learning_rate: 0.46
+  motivation: 0.56
   misconception_rate: 0.24
   help_seeking: 0.28
   topic_drift: 0.03
@@ -12,10 +13,5 @@ answer_style: concise
 confidence_style: calibrated
 persistence_style: steady
 language: match_tutor
-traits:
-  - "Usually gets the main idea after an example, but may omit a quantifier or condition on first attempt."
-  - "Asks focused clarification questions when notation changes."
-  - "Responds well to short corrective feedback and can repair a partial answer."
-  - "Prefers connecting symbols back to concrete cases before generalizing."
 metadata:
   source: aitutor-dev

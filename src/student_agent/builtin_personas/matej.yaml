@@ -5,6 +5,7 @@ control:
   mastery: 0.55
   confidence: 0.55
   learning_rate: 0.40
+  motivation: 0.53
   misconception_rate: 0.20
   help_seeking: 0.18
   topic_drift: 0.03
@@ -12,11 +13,6 @@ answer_style: concise
 confidence_style: calibrated
 persistence_style: steady
 language: match_tutor
-traits:
-  - "Usually understands the main idea but may miss one condition or detail."
-  - "Asks clarification questions when the tutor moves too quickly."
-  - "Responds well to examples and brief corrective feedback."
-  - "Gives concise answers with uncertainty proportional to understanding."
 metadata:
   source: aitutor-dev
   prior_student_id: matej

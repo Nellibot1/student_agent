@@ -1,4 +1,9 @@
-"""Interface and prompt helpers for student simulator modes."""
+"""Interface between policy decisions and model-generation instructions.
+
+A mode has two jobs: choose the intended response behavior and render enough safe context
+for a text generator to express that behavior. It must not turn tutor-private data into
+prompt context.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +20,8 @@ from ..policy import (
 
 
 class StudentSimulatorMode(Protocol):
+    """Contract implemented by each simulator mode registered in ``modes.__init__``."""
+
     mode: SimulationMode
 
     def choose_decision(
@@ -27,7 +34,6 @@ class StudentSimulatorMode(Protocol):
 
     def render_instruction(
         self,
-        prompt_template: str,
         persona: StudentPersona,
         observation: StudentObservation,
         simulated_state: SimulatedStudentState,
@@ -38,6 +44,8 @@ class StudentSimulatorMode(Protocol):
 
 
 class PolicyBackedMode:
+    """Shared decision logic for modes that use the deterministic Python policy."""
+
     mode: SimulationMode
 
     def choose_decision(
@@ -46,28 +54,5 @@ class PolicyBackedMode:
         observation: StudentObservation,
         simulated_state: SimulatedStudentState,
     ) -> PolicyDecision:
+        """Delegate behavior selection while identifying the active mode."""
         return choose_response_mode(persona, observation, mode=self.mode, simulated_state=simulated_state)
-
-
-def fill_simulator_template(
-    prompt_template: str,
-    *,
-    mode: SimulationMode,
-    persona_block: str,
-    observation_block: str,
-    history_block: str,
-    tutor_message: str,
-    decision_block: str,
-    simulated_state_block: str,
-    response_mode_reference: str,
-) -> str:
-    return (
-        prompt_template.replace("{{persona}}", persona_block)
-        .replace("{{observation}}", observation_block)
-        .replace("{{conversation_history}}", history_block)
-        .replace("{{tutor_message}}", tutor_message)
-        .replace("{{decision}}", decision_block)
-        .replace("{{simulated_state}}", simulated_state_block)
-        .replace("{{mode}}", mode.value)
-        .replace("{{response_mode_reference}}", response_mode_reference)
-    )

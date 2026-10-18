@@ -10,7 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StudentPolicyScalars(BaseModel):
-    """Lower-level probabilities/rates consumed by the deterministic policy."""
+    """Internal probabilities and rates consumed by the deterministic policy.
+
+    Most callers should configure :class:`StudentControlProfile` instead. These values
+    are derived from that easier, learner-centered vocabulary before the policy runs.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -28,6 +32,7 @@ class StudentControlProfile(BaseModel):
     - mastery: baseline concept knowledge
     - confidence: how certain the student sounds/feels
     - learning_rate: how quickly feedback improves future behavior
+    - motivation: willingness to engage and keep learning
     - misconception_rate: how likely wrong/partial answers are misconception-shaped
     - help_seeking: tendency to ask clarification questions
     - topic_drift: tendency to jump to nearby topics
@@ -38,12 +43,21 @@ class StudentControlProfile(BaseModel):
     mastery: float = Field(0.55, ge=0.0, le=1.0)
     confidence: float = Field(0.55, ge=0.0, le=1.0)
     learning_rate: float = Field(0.40, ge=0.0, le=1.0)
+    motivation: float = Field(0.53, ge=0.0, le=1.0)
     misconception_rate: float = Field(0.20, ge=0.0, le=1.0)
     help_seeking: float = Field(0.15, ge=0.0, le=1.0)
     topic_drift: float = Field(0.03, ge=0.0, le=1.0)
 
     def to_policy_scalars(self) -> StudentPolicyScalars:
-        """Translate into the simulator's current probability knobs."""
+        """Translate beginner-facing controls into the policy's internal probabilities.
+
+        Keep this conversion in one place: callers describe a learner with intuitive
+        properties such as mastery and help-seeking, while the policy receives the
+        lower-level rates it needs to choose a response.
+        """
+        # Partial answers become more likely when prior mastery is low or the learner is
+        # prone to misconceptions. The base 0.10 keeps partial answers possible even for
+        # otherwise strong students, which is more realistic than an all-or-nothing model.
         partial_probability = _clamp01(0.10 + (1.0 - self.mastery) * 0.35 + self.misconception_rate * 0.15)
         return StudentPolicyScalars(
             correct_probability=self.mastery,
@@ -53,17 +67,6 @@ class StudentControlProfile(BaseModel):
             clarification_probability=self.help_seeking,
             topic_jump_probability=self.topic_drift,
         )
-
-    def prompt_block(self) -> str:
-        return (
-            f"mastery={self.mastery:.2f}, "
-            f"confidence={self.confidence:.2f}, "
-            f"learning_rate={self.learning_rate:.2f}, "
-            f"misconception_rate={self.misconception_rate:.2f}, "
-            f"help_seeking={self.help_seeking:.2f}, "
-            f"topic_drift={self.topic_drift:.2f}"
-        )
-
-
 def _clamp01(x: float) -> float:
+    """Keep a calculated probability inside the valid inclusive range 0..1."""
     return min(1.0, max(0.0, x))

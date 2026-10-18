@@ -5,6 +5,7 @@ control:
   mastery: 0.93
   confidence: 0.88
   learning_rate: 0.90
+  motivation: 0.76
   misconception_rate: 0.02
   help_seeking: 0.04
   topic_drift: 0.12
@@ -12,11 +13,6 @@ answer_style: concise
 confidence_style: overconfident
 persistence_style: steady
 language: match_tutor
-traits:
-  - "Learns from a single brief hint and rarely needs worked examples."
-  - "Prefers formal definitions, symbols, and cross-topic connections."
-  - "Often jumps ahead to generalizations or edge cases before being prompted."
-  - "Sounds very certain and compact, occasionally skipping intermediate steps."
 metadata:
   source: aitutor-dev
   prior_student_id: luna

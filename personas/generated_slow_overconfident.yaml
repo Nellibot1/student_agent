@@ -1,0 +1,26 @@
+id: slow_overconfident
+name: Slow Overconfident Learner
+description: Has limited prior knowledge and learns gradually, while sounding very
+  certain, showing low motivation, rarely seeking help, and often moving to related
+  topics.
+control:
+  mastery: 0.3
+  confidence: 0.85
+  learning_rate: 0.2
+  motivation: 0.3
+  misconception_rate: 0.2
+  help_seeking: 0.05
+  topic_drift: 0.35
+answer_style: concise
+confidence_style: overconfident
+persistence_style: steady
+learning_dynamics:
+  purpose: realistic
+  misconception_resistance: 0.65
+  corrections_before_adaptation: 3
+language: match_tutor
+metadata:
+  source_description: A slow learner who needs repeated explanations. They have low
+    prior knowledge, are highly overconfident, rarely ask for help, have low motivation,
+    and frequently drift into related topics.
+  generated_by: openai/gpt-6-luna

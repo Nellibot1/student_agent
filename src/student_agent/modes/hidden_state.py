@@ -54,18 +54,23 @@ You are the STUDENT, not the tutor, not an evaluator, and not an assistant expla
 
 
 class HiddenStateStudentMode(PolicyBackedMode):
+    """Render replies whose detailed learner state stays outside the language-model prompt."""
+
     mode = SimulationMode.HIDDEN_STATE_STUDENT
 
     def render_instruction(
         self,
-        prompt_template: str,
         persona: StudentPersona,
         observation: StudentObservation,
         simulated_state: SimulatedStudentState,
         decision: PolicyDecision,
         history_block: str,
     ) -> str:
-        del prompt_template, simulated_state
+        """Build one generation instruction from visible text and safe style guidance."""
+        # The Python policy has already used this state to choose ``decision``. Deleting
+        # the local name documents that raw mastery, confidence, and misconception records
+        # must not accidentally be interpolated into the prompt below.
+        del simulated_state
         return (
             HIDDEN_STATE_PROMPT_TEMPLATE.replace("{{style}}", _style_block(persona))
             .replace("{{conversation_history}}", history_block)
@@ -77,9 +82,9 @@ class HiddenStateStudentMode(PolicyBackedMode):
 def _style_block(persona: StudentPersona) -> str:
     """Prompt-safe surface style for hidden-state runs.
 
-    This intentionally excludes name, prior student id, free-form description, traits, and
-    numeric controls. Those fields remain available to the Python policy, but should not be
-    visible to the LLM that realizes one student message.
+    This intentionally excludes name, prior student id, free-form description, and numeric
+    controls. Those fields remain available to the Python policy, but should not be visible
+    to the LLM that realizes one student message.
     """
     lines = [
         f"style: {_answer_style(persona.answer_style)}",

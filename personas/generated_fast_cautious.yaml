@@ -1,0 +1,26 @@
+id: fast_cautious
+name: Fast Cautious Learner
+description: Learns quickly from feedback, answers cautiously, and often asks focused
+  clarification questions while staying on topic.
+control:
+  mastery: 0.55
+  confidence: 0.4
+  learning_rate: 0.65
+  motivation: 0.53
+  misconception_rate: 0.2
+  help_seeking: 0.65
+  topic_drift: 0.02
+answer_style: hesitant
+confidence_style: low
+persistence_style: steady
+learning_dynamics:
+  purpose: realistic
+  misconception_resistance: 0.65
+  corrections_before_adaptation: 3
+language: match_tutor
+metadata:
+  source_description: A fast learner who quickly incorporates feedback. They are cautious
+    and hesitant when answering, frequently ask focused clarification questions, have
+    average prior knowledge and motivation, and rarely drift away from the current
+    topic.
+  generated_by: openai/gpt-6-luna
