@@ -5,16 +5,11 @@
 ```python
 reply = await student.respond("That is almost correct. Can you try again?")
 ```
+The student keeps its own visible conversation history and forms a fallible interpretation of the tutor's words.
 
-There is no tutor-owned `topic_id`, task type, expected-answer flag, grade, lesson plan,
-database object, or application session passed into `respond`. The student keeps its own
-visible conversation history and forms a fallible interpretation of the tutor's words.
-
-The package does not import Google ADK, the AI Tutor application, a web framework, a
-database, OpenAI, Anthropic, or another model SDK. It uses two normal installable runtime
+It uses two normal installable runtime
 libraries: Pydantic for validated data models and PyYAML for persona files. “Standalone”
-means the package can be installed and used outside the original repository; it does not
-mean that all code must be Python-standard-library-only.
+means the package can be installed and used outside the original dev_tutor repository.
 
 ## Start here
 
