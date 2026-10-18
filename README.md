@@ -258,5 +258,3 @@ The tests use injected model fakes and should not contact a provider.
 - [Architecture and turn lifecycle](docs/architecture.md)
 - [Personas, persistence, and perception evaluation](docs/experiments.md)
 
-The core package remains provider-neutral. LiteLLM is an optional convenience integration;
-applications may inject their own perception, generation, and validation adapters.
