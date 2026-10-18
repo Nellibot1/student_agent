@@ -100,7 +100,7 @@ def test_cli_parser_supports_chat_and_persona_listing() -> None:
     personas = parser.parse_args(["personas"])
 
     assert chat.model == "local/model"
-    assert chat.reasoning_effort == "low"
+    assert chat.reasoning_effort == ""
     assert chat.persona == "luna"
     assert not hasattr(chat, "perception")
     assert personas.command == "personas"

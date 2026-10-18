@@ -406,7 +406,9 @@ class StudentSimulator:
                     )
                 ).strip()
             except Exception as exc:
-                raise StudentGenerationError("student text generation failed") from exc
+                raise StudentGenerationError(
+                    f"student text generation failed ({type(exc).__name__}): {exc}"
+                ) from exc
 
             if not message:
                 validation = ValidationResult(

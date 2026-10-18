@@ -161,8 +161,9 @@ student-agent chat \
 Student generation uses a 1000-token completion budget by default so reasoning models have
 room for internal reasoning before producing the intentionally concise visible answer. Override
 it with `--max-tokens` when a particular provider needs a different limit.
-All standalone model calls default to low reasoning effort. Override this for an experiment
-with `--reasoning-effort none|low|medium|high|xhigh|max`, or set
+Standalone model calls omit reasoning effort by default because many chat models do not
+support that parameter. Set it for a compatible reasoning model with
+`--reasoning-effort none|low|medium|high|xhigh|max`, or set
 `STUDENT_AGENT_REASONING_EFFORT` once in the environment.
 
 For a non-interactive, one-message run:

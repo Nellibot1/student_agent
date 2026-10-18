@@ -59,7 +59,9 @@ from .policy import SimulationMode
 
 ReadLine = Callable[[str], str]
 WriteLine = Callable[[str], None]
-DEFAULT_REASONING_EFFORT = "low"
+# Most chat models do not accept a reasoning_effort parameter. Keep it opt-in so
+# ordinary model names such as openai/gpt-4.1-mini work without extra configuration.
+DEFAULT_REASONING_EFFORT = ""
 REASONING_EFFORT_CHOICES = ("none", "low", "medium", "high", "xhigh", "max")
 
 
@@ -414,8 +416,8 @@ def _add_reasoning_effort_argument(parser: argparse.ArgumentParser) -> None:
         choices=REASONING_EFFORT_CHOICES,
         default=os.environ.get("STUDENT_AGENT_REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
         help=(
-            "Reasoning effort shared by model calls; defaults to "
-            f"STUDENT_AGENT_REASONING_EFFORT or {DEFAULT_REASONING_EFFORT}"
+            "Reasoning effort shared by model calls; omitted by default or read from "
+            "STUDENT_AGENT_REASONING_EFFORT"
         ),
     )
 
