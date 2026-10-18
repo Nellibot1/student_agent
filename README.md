@@ -4,8 +4,6 @@
 tutor sends visible text, and the package interprets it from the learner's perspective,
 updates private learner state, chooses a response behavior, and generates a natural reply.
 
-This guide takes a new user from a fresh clone to a working conversation. Advanced design
-and integration details are linked at the end.
 
 ## First run from a fresh clone
 
