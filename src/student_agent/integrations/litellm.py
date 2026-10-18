@@ -1,9 +1,21 @@
-"""Optional LiteLLM adapters for perception, validation, and reply generation.
+"""Translate between ``student_agent`` and the external LiteLLM library.
 
-The import of LiteLLM is deliberately delayed until the adapter is constructed so
-the core ``student-agent`` package remains usable without a model-provider SDK. This is
-the only module a new provider integration needs to resemble; core engine and policy code
-must stay unaware of provider request formats.
+LiteLLM is a separate Python library that can send requests to many AI providers through
+one common interface. This file contains the small translator classes used by our project:
+
+* ``LiteLLMStudentPerception`` asks a model what the tutor's visible message appears to mean.
+* ``LiteLLMStudentGenerator`` asks a model to write one natural student reply.
+* ``LiteLLMStudentResponseValidator`` checks whether that reply follows the behavior that
+  the simulator selected.
+
+The classes convert our Python objects into LiteLLM request dictionaries and convert the
+answers back into our own validated objects. They do not decide how knowledgeable the
+student is. That decision remains in the core policy code.
+
+The external LiteLLM library is imported only when one of these adapters is created. This
+allows the rest of ``student_agent`` to work with a local model, a test double, or no model
+library at all. A different provider integration should implement the same small interfaces
+without requiring changes to the engine or policy.
 """
 
 from __future__ import annotations
@@ -119,7 +131,13 @@ Return exactly one JSON object:
 
 @dataclass(frozen=True)
 class GenerationUsage:
-    """Token usage reported by one model call, when supplied by the provider."""
+    """A simple receipt for one AI-model request.
+
+    Some model providers report how many input and output tokens they used. This class keeps
+    that information in one consistent shape, even when providers return slightly different
+    response objects. It is used for debugging, experiment reports, and cost tracking; it
+    does not influence what the simulated student says.
+    """
 
     model: str
     prompt_tokens: int | None = None
@@ -134,7 +152,16 @@ class GenerationUsage:
 
 
 class _SemanticObservation(BaseModel):
-    """Strict schema for model JSON before it becomes a public observation."""
+    """The exact JSON shape expected from the perception model.
+
+    An AI model returns ordinary text, even when we ask it to return JSON. Before that result
+    is allowed into the simulator, Pydantic checks every field against this private class.
+    Missing fields, unknown fields, invalid category names, and numbers outside their allowed
+    range are rejected. A valid value is later converted into the public
+    ``StudentObservation`` type used by the rest of the package.
+
+    The leading underscore means this is an internal helper, not part of the public API.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -156,7 +183,15 @@ class _SemanticObservation(BaseModel):
 
 
 class _SemanticValidation(BaseModel):
-    """Strict schema for a validator model's raw JSON response."""
+    """The exact JSON shape expected from the response-checking model.
+
+    The validator model must say whether the generated student reply matches the intended
+    behavior, whether the reply is safe to show, and what behavior it actually observed.
+    Pydantic checks that answer here before the engine uses it. This prevents malformed or
+    unexpected model output from being treated as a trustworthy validation result.
+
+    The leading underscore means this is an internal helper, not part of the public API.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -168,11 +203,23 @@ class _SemanticValidation(BaseModel):
 
 
 class LiteLLMStudentPerception:
-    """Semantically interpret visible tutor text without tutor-system metadata.
+    """Ask an AI model how the simulated student interprets the tutor's message.
 
-    The adapter sends bounded visible history and selected student-owned memory to a model,
-    validates its JSON, and converts it into ``StudentObservation``. Transport failures and
-    malformed output share the same limited retry path.
+    Think of this class as the student's reading-and-understanding step. It receives:
+
+    * the latest message that the tutor showed to the student;
+    * a short, visible conversation history; and
+    * a limited selection of the student's own topic, task, and misconception memory.
+
+    It turns that information into a LiteLLM request and asks for structured JSON. The JSON
+    describes things such as whether the tutor asked a question, whether feedback sounded
+    correct or incorrect, what topic the student thinks they are discussing, and whether a
+    response appears to be expected.
+
+    The result is checked carefully and converted into ``StudentObservation``. This class
+    does not receive a hidden answer key or an official tutor grade, so its interpretation can
+    be imperfect in the same way a real student's interpretation can be imperfect. It also
+    limits how much history and memory is sent so requests do not grow forever.
     """
 
     def __init__(
@@ -330,10 +377,23 @@ class LiteLLMStudentPerception:
 
 
 class LiteLLMStudentResponseValidator:
-    """Semantically verify that generated text realizes the selected student behavior.
+    """Ask an AI model whether a generated reply follows the simulator's plan.
 
-    This validator is not a subject-matter grader. It compares the generated wording with
-    the behavior already chosen by policy, using only student-visible turn information.
+    The Python policy has already selected a behavior such as "give a partial answer" or
+    "ask for clarification." The generator may accidentally write something different. This
+    class sends the intended behavior and the generated reply to a model and asks it to compare
+    them.
+
+    It returns a ``ValidationResult`` saying:
+
+    * whether the reply matches the intended behavior;
+    * what behavior the reply actually shows;
+    * whether the reply is safe to display; and
+    * how the generator could repair it on another attempt.
+
+    This class is not an exam grader and does not decide whether the student's subject-matter
+    answer is objectively correct. It checks whether the wording matches the behavior that the
+    simulator deliberately chose.
     """
 
     def __init__(
@@ -452,11 +512,16 @@ class LiteLLMStudentResponseValidator:
 
 
 class LiteLLMStudentGenerator:
-    """Turn a prepared engine instruction into student text through LiteLLM.
+    """Ask an AI model to write the simulated student's visible reply.
 
-    Unlike perception and validation, generation expects plain text rather than JSON. The
-    engine is responsible for checking that the result is non-empty and, when configured,
-    behaviorally valid.
+    By the time this class is called, the engine and policy have already decided what kind of
+    reply should be produced. The active simulation mode has converted that decision into a
+    plain-language instruction. This adapter packages the instruction as a LiteLLM request,
+    sends it to the selected model, and returns the model's text.
+
+    The generator is therefore the writer, not the decision-maker. It does not calculate
+    mastery, update confidence, choose whether the answer should be correct, or commit any
+    student state. The engine performs those jobs and checks that the returned text is usable.
     """
 
     def __init__(
@@ -516,7 +581,13 @@ class LiteLLMStudentGenerator:
 
 
 def _load_completion() -> CompletionCallable:
-    """Import the optional dependency only when a LiteLLM adapter is actually used."""
+    """Load LiteLLM's model-calling function only when an adapter needs it.
+
+    ``litellm`` in the import below is the external installed library, not this local file.
+    Keeping the import inside this function means that importing the core ``student_agent``
+    package does not require LiteLLM. Tests can also inject a fake completion function and
+    avoid importing or contacting any external model service.
+    """
     try:
         from litellm import acompletion
     except ImportError as exc:  # pragma: no cover - depends on installation extras
